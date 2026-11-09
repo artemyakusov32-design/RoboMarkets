@@ -21,6 +21,8 @@ class Run:
     latest: dict = field(default_factory=dict)
     log: list = field(default_factory=list)
     result: dict = field(default_factory=dict)
+    history: dict = field(default_factory=dict)
+    stats: dict = field(default_factory=lambda: dict(sold=0, refused=0, invalidCommands=0))
     finished: bool = False
     last_seq: int = -1
     lock: RLock = field(default_factory=RLock)
@@ -78,6 +80,8 @@ class RunStore:
                 assert event["type"] in ("supply", "machine_done", "sale_result", "idle")
                 if event["type"] == "supply":
                     assert event["item"]["id"] and event["item"]["kind"]
+                assert isinstance(payload.get("report", []), list)
+                assert all(isinstance(report, dict) for report in payload.get("report", []))
                 state = payload["state"]
                 assert isinstance(state["storage"]["items"], list)
                 assert type(state["storage"]["free"]) is int and state["storage"]["free"] >= 0
@@ -98,6 +102,14 @@ class RunStore:
             run.responses[seq] = deepcopy(response)
             run.last_seq = seq
             run.latest = deepcopy(payload)
+            run.history[payload["t"]] = state["cash"]
+            if event["type"] == "sale_result":
+                outcome = event.get("outcome")
+                if outcome in ("sold", "refused"):
+                    run.stats[outcome] += 1
+            run.stats["invalidCommands"] += sum(
+                report.get("ok") is False for report in payload.get("report", [])
+            )
             run.log.append(dict(seq=seq, t=payload["t"], type=event["type"],
                 commands=deepcopy(response["commands"]), report=deepcopy(payload.get("report", [])),
                 decisionMs=round(elapsed, 3)))
@@ -109,6 +121,8 @@ class RunStore:
             run.finished = True
             # Скрытые параметры покупателей из finish не используются стратегией.
             run.result = {k: deepcopy(v) for k, v in result.items() if k != "buyers"}
+            if isinstance(result.get("profit"), (int, float)):
+                run.history[run.config["horizon"]] = result["profit"]
         return {"ok": True}
 
     def snapshot(self, run_id):
@@ -116,7 +130,9 @@ class RunStore:
         with run.lock:
             return deepcopy(dict(runId=run_id, status="finished" if run.finished else "running",
                 horizon=run.config["horizon"], events=len(run.responses),
-                latest=run.latest, result=run.result, log=run.log[-100:]))
+                latest=run.latest, result=run.result, log=run.log[-100:],
+                stats=run.stats, history=[dict(t=t, cash=cash)
+                    for t, cash in sorted(run.history.items())]))
 
     def summaries(self):
         with self.lock:
