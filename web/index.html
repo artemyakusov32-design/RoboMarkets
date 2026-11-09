@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ОПД · Завод роботов</title><link rel="stylesheet" href="/style.css"></head>
+<body><main>
+<header><div><span class="eyebrow">ПРОЕКТ ОПД / ПАНЕЛЬ НАБЛЮДЕНИЯ</span><h1>Завод роботов<span class="dot">●</span></h1><p>Производство, склад и решения стратегии в одном месте.</p></div><span id="connection" class="badge">Подключение…</span></header>
+<section class="toolbar"><label>Прогон <select id="runs"><option value="">Пока нет прогонов</option></select></label><label>Токен сервиса <input id="token" type="password" placeholder="Если задан ARENA_TOKEN" autocomplete="off"></label><button id="connect">Подключить</button><span id="status"></span></section>
+<div id="empty" class="empty"><h2>Завод готов к работе</h2><p>Запустите локальный прогон — здесь появятся станки, склад и журнал решений.</p><code>python3 -m scripts.demo --url http://127.0.0.1:4001 --delay 0.03</code></div>
+<div id="dashboard" hidden>
+<section class="metrics"><article><span>Деньги</span><strong id="cash">0</strong></article><article><span>Такт смены</span><strong id="tick">0</strong></article><article><span>Склад · свободно</span><strong id="storage">0</strong></article><article><span>Событий</span><strong id="events">0</strong></article></section>
+<section class="panel"><h2>Деньги по ходу смены</h2><p id="profit-label">Наблюдения с момента открытия панели</p><svg id="chart" viewBox="0 0 1000 160" role="img" aria-label="График денег по тактам"></svg></section>
+<div class="columns"><section class="panel"><h2>Производственная линия</h2><div id="machines"></div></section><section class="panel"><h2>Покупатели</h2><div id="buyers"></div></section></div>
+<section class="panel"><h2>На складе</h2><div id="items" class="items"></div></section>
+<section class="panel"><h2>Последние решения</h2><div class="table-wrap"><table><thead><tr><th>Такт</th><th>Событие</th><th>Команды</th><th>Результат предыдущих команд</th><th>Решение, мс</th></tr></thead><tbody id="log"></tbody></table></div></section>
+</div><footer>ОПД · v0.1 · Базовая стратегия · Спецификация v1</footer></main><script src="/app.js"></script></body></html>
