@@ -32,6 +32,23 @@ class RunTests(unittest.TestCase):
         self.assertEqual(self.store.get("test").memory["calls"], 1)
         self.assertEqual(len(self.store.get("test").log), 1)
 
+    def test_dashboard_history_and_counters_are_idempotent(self):
+        payload = self.payload()
+        payload["event"] = dict(type="sale_result", outcome="sold")
+        payload["state"]["cash"] = 42
+        payload["report"] = [dict(ok=False, reason="bad_inputs")]
+        self.store.event("test", payload)
+        self.store.event("test", payload)
+        snapshot = self.store.snapshot("test")
+        self.assertEqual(snapshot["history"], [dict(t=0, cash=42)])
+        self.assertEqual(snapshot["stats"], dict(sold=1, refused=0, invalidCommands=1))
+        self.store.finish("test", dict(profit=40))
+        snapshot = self.store.snapshot("test")
+        self.assertEqual(snapshot["history"][-1], dict(t=60, cash=40))
+        self.store.start("other", self.sim.config)
+        self.assertEqual(self.store.snapshot("other")["history"], [])
+        self.assertEqual(self.store.snapshot("other")["stats"]["sold"], 0)
+
     def test_parallel_duplicate_is_atomic(self):
         threads = [threading.Thread(target=self.store.event, args=("test", self.payload())) for _ in range(8)]
         for t in threads:
@@ -52,6 +69,14 @@ class RunTests(unittest.TestCase):
             self.store.event("test", {"seq": 0})
         self.assertEqual(self.store.get("test").responses, {})
         self.store.event("test", self.payload())
+
+    def test_invalid_report_does_not_commit_partial_dashboard_state(self):
+        payload = self.payload()
+        payload["report"] = ["invalid"]
+        with self.assertRaises(ApiError):
+            self.store.event("test", payload)
+        self.assertEqual(self.store.get("test").responses, {})
+        self.assertEqual(self.store.snapshot("test")["history"], [])
 
     def test_older_new_seq_rejected(self):
         self.store.event("test", self.payload(2))
