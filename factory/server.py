@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .runs import ApiError, RunStore
+from .demo import DemoRunner
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 def make_server(host="127.0.0.1", port=4001, token=None, store=None):
     store = store or RunStore()
+    demos = DemoRunner(store)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
@@ -59,14 +61,15 @@ def make_server(host="127.0.0.1", port=4001, token=None, store=None):
                     if path == "/v1/health":
                         return self.send(200, {"status": "ok"})
                     if path == "/v1/info":
-                        return self.send(200, dict(name="ОПД · Завод роботов", version="0.1.0", project="factory", specVersion="v1"))
+                        return self.send(200, dict(name="ОПД · Завод роботов", version="0.2.0", project="factory", specVersion="v1"))
                     if path == "/api/runs":
                         return self.send(200, {"runs": store.summaries()})
                     match = re.fullmatch(r"/api/runs/([A-Za-z0-9_-]+)", path)
                     if match:
                         return self.send(200, store.snapshot(match[1]))
                 match = re.fullmatch(r"/v1/runs/([A-Za-z0-9_-]+)/(start|event|finish)", path)
-                if self.command != "POST" or not match:
+                is_demo = path == "/api/demo"
+                if self.command != "POST" or (not match and not is_demo):
                     raise ApiError("not_found", "Маршрут не найден", 404)
                 try:
                     size = int(self.headers.get("Content-Length", "0"))
@@ -79,9 +82,9 @@ def make_server(host="127.0.0.1", port=4001, token=None, store=None):
                 except (ValueError, UnicodeDecodeError):
                     raise ApiError("bad_json", "Ожидается JSON-объект")
                 seq = self.headers.get("X-Arena-Seq")
-                if match[2] == "event" and seq is not None and str(body.get("seq")) != seq:
+                if match and match[2] == "event" and seq is not None and str(body.get("seq")) != seq:
                     raise ApiError("bad_seq", "seq тела и заголовка различаются")
-                result = getattr(store, match[2])(match[1], body)
+                result = demos.start(body) if is_demo else getattr(store, match[2])(match[1], body)
                 self.send(200, result)
             except ApiError as exc:
                 self.send(exc.status, {"error": {"code": exc.code, "message": exc.message}})
@@ -91,7 +94,12 @@ def make_server(host="127.0.0.1", port=4001, token=None, store=None):
                 logger.exception("Ошибка обработки запроса")
                 self.send(500, {"error": {"code": "internal_error", "message": "Ошибка сервиса"}})
 
-    server = ThreadingHTTPServer((host, port), Handler)
+    class Server(ThreadingHTTPServer):
+        def server_close(self):
+            demos.close()
+            super().server_close()
+
+    server = Server((host, port), Handler)
     server.daemon_threads = True
     return server
 

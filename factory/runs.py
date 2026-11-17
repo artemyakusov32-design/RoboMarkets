@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from threading import RLock
 from time import perf_counter
 
-from .strategy import BaselineStrategy
+from .strategy import LearningStrategy
 
 
 class ApiError(Exception):
@@ -30,7 +30,7 @@ class Run:
 
 class RunStore:
     def __init__(self, strategy=None):
-        self.strategy = strategy or BaselineStrategy()
+        self.strategy = strategy or LearningStrategy()
         self.runs = {}
         self.lock = RLock()
 
@@ -131,6 +131,7 @@ class RunStore:
             return deepcopy(dict(runId=run_id, status="finished" if run.finished else "running",
                 horizon=run.config["horizon"], events=len(run.responses),
                 latest=run.latest, result=run.result, log=run.log[-100:],
+                strategy=getattr(self.strategy, 'name', 'Learning v1'),
                 stats=run.stats, history=[dict(t=t, cash=cash)
                     for t, cash in sorted(run.history.items())]))
 

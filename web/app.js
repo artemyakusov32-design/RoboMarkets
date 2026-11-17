@@ -46,16 +46,19 @@ function toast(message) {
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, 3500);
 }
 
-async function api(path) {
+async function api(path, body) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const token = $('token').value.trim();
     const response = await fetch(path, {
-      headers: token ? {Authorization: 'Bearer ' + token} : {},
+      headers: {...(token ? {Authorization: 'Bearer ' + token} : {}), ...(body ? {'Content-Type': 'application/json'} : {})},
+      method: body ? 'POST' : 'GET',
+      body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
       cache: 'no-store'
     });
+    if (response.status === 409) throw new Error('Тестовая смена уже идёт. Дождитесь её завершения.');
     if (!response.ok) throw new Error(response.status === 401
       ? 'Сервис защищён токеном. Откройте «Подключение» и укажите токен.'
       : `Сервис вернул ошибку ${response.status}. Попробуйте обновить подключение.`);
@@ -378,3 +381,22 @@ render(null);
 poll();
 setInterval(() => { if (!document.hidden) poll(); }, 1500);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+
+$('demo-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = $('demo-submit');
+  button.disabled = true;
+  $('demo-error').hidden = true;
+  try {
+    const result = await api('/api/demo', {
+      seed: Number($('demo-seed').value), horizon: Number($('demo-horizon').value)
+    });
+    selected = result.runId; userSelected = true; revision = ''; samples = [];
+    $('guide-dialog').close();
+    toast('Смена запущена. Стратегия Learning v1 управляет заводом.');
+    poll(true);
+  } catch (error) {
+    $('demo-error').textContent = error.message;
+    $('demo-error').hidden = false;
+  } finally { button.disabled = false; }
+});
