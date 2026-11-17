@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 import unittest
 from copy import deepcopy
 from urllib.error import HTTPError
@@ -167,6 +168,31 @@ class HttpTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as error:
             urlopen(req)
         self.assertEqual(error.exception.code, 400)
+
+    def test_demo_can_be_started_from_dashboard(self):
+        with self.request('/api/demo', dict(seed=1,horizon=60,delay=0)) as response:
+            run_id = json.load(response)['runId']
+        deadline = time.monotonic() + 5
+        while True:
+            with self.request('/api/runs/' + run_id) as response:
+                snapshot = json.load(response)
+            if snapshot['status'] == 'finished' or time.monotonic() > deadline:
+                break
+            time.sleep(.01)
+        self.assertEqual(snapshot['status'], 'finished')
+        self.assertEqual(snapshot['strategy'], 'Learning v1')
+        self.assertEqual(snapshot['result']['invalidCommands'], 0)
+        self.assertGreater(snapshot['result']['sold'], 0)
+        self.assertNotIn('failed', snapshot['result'])
+
+    def test_demo_requires_auth_and_valid_parameters(self):
+        with self.assertRaises(HTTPError) as error:
+            self.request('/api/demo', dict(seed=1), auth=False)
+        self.assertEqual(error.exception.code, 401)
+        for body in [dict(seed=True), dict(horizon=0), dict(delay=-1)]:
+            with self.assertRaises(HTTPError) as error:
+                self.request('/api/demo', body)
+            self.assertEqual(error.exception.code, 400)
 
     def test_full_round_over_http(self):
         sim = Simulator(7, 60)
