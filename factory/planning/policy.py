@@ -44,19 +44,39 @@ class Params:
     time_safety: float = 0.5         # доля eventTimeoutMs, которую разрешаем тратить на решение
 
 
-# Q-коэффициенты: ИХ настраиваем руками / генетикой / RL. Q(s,a) = Σ w[name]·φ[name].
+# Веса CMA-ES standard, принятые по финальной проверке на seed 1136–1235.
 DEFAULT_Q: dict[str, float] = {
     # accept
-    "acc_bias": 6.0, "acc_price": -1.0, "acc_need": 4.0, "acc_crowd": -6.0, "acc_margin": 10.0,
+    "acc_bias": 6.460646087746754,
+    "acc_price": -0.744818097905831,
+    "acc_need": 3.9080489813355537,
+    "acc_crowd": -11.097763003529252,
+    "acc_margin": 5.534227410033151,
     # start
-    "st_bias": 2.0, "st_stage_cut": 0.0, "st_stage_handles": -1.0, "st_stage_paint": 1.5,
-    "st_stage_assemble": 3.0, "st_stage_value": 1.0, "st_progress": 0.5, "st_deficit": 1.5,
-    "st_stock": -1.2, "st_free_gain": 1.0, "st_cost": -0.3,
+    "st_bias": 3.257839880428274,
+    "st_stage_cut": 1.3944633532086121,
+    "st_stage_handles": -0.8188727308603809,
+    "st_stage_paint": 0.08728537237925571,
+    "st_stage_assemble": 3.6846899708706107,
+    "st_stage_value": -0.1383131860917498,
+    "st_progress": 1.1311520492760716,
+    "st_deficit": 3.910089925924348,
+    "st_stock": -2.2165974005162448,
+    "st_free_gain": 1.4165965677071024,
+    "st_cost": -0.7695392356595826,
     # offer
-    "of_bias": 0.0, "of_exp_price": 1.0, "of_info": 4.0, "of_fee": -1.0, "of_store": 1.0,
-    "of_wait_gap": -0.5, "of_below_reserve": -10.0,
+    "of_bias": -0.15508815045414567,
+    "of_exp_price": 0.41239676472590786,
+    "of_info": 7.015393826392922,
+    "of_fee": -1.7180367697817365,
+    "of_store": 0.8116550547251186,
+    "of_wait_gap": -1.858778684042095,
+    "of_below_reserve": -27.343548378214237,
     # discard
-    "dc_bias": -8.0, "dc_pressure": 20.0, "dc_value": -0.5, "dc_overstock": 3.0,
+    "dc_bias": -14.544140887176384,
+    "dc_pressure": 20.347280441067404,
+    "dc_value": -1.1115620945671594,
+    "dc_overstock": 0.15391434375990043,
 }
 STAGE_WEIGHT = {"cut": 0.3, "handles": 0.3, "paint": 0.6, "assemble": 1.0}
 
