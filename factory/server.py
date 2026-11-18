@@ -10,6 +10,8 @@ from pathlib import Path
 
 from .runs import ApiError, RunStore
 from .demo import DemoRunner
+from .planning.weights import load_weights
+from .strategy import LearningStrategy
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 logger = logging.getLogger(__name__)
@@ -108,9 +110,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=4001)
+    parser.add_argument("--weights", type=Path, help="JSON с обученными весами Learning v1")
     args = parser.parse_args()
+    try:
+        store = RunStore(LearningStrategy(load_weights(args.weights))) if args.weights else None
+    except (OSError, ValueError, OverflowError) as error:
+        parser.error(f"Не удалось загрузить веса: {error}")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    server = make_server(args.host, args.port, os.environ.get("ARENA_TOKEN"))
+    server = make_server(args.host, args.port, os.environ.get("ARENA_TOKEN"), store=store)
     print("Завод запущен: http://{}:{}".format(args.host, server.server_port), flush=True)
     try:
         server.serve_forever()
