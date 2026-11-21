@@ -99,4 +99,5 @@ class LearningController:
             t=t, free=st.storage.free, items={i.id: i for i in st.storage.items if i.id not in pending_items},
             idle_machines={m.id for m in st.machines if m.busyUntil is None},
             cooldown_left=left, supply=supply,
-            supply_price=float(msg.event.price or 0.0) if supply is not None else 0.0)
+            supply_price=float(msg.event.price or 0.0) if supply is not None else 0.0,
+            busy_left={m.id: max(0, m.busyUntil - t) for m in st.machines if m.busyUntil is not None})
