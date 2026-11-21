@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from itertools import product
 from typing import Any, Optional, Protocol, Sequence
 
+from .lookahead import BuyerTimeline
 from .market import MarketModel, RobotType, robot_type
 from .schemas import Command, Item, StartMsg, item_matches, op_result_props
 
@@ -32,53 +33,54 @@ class Params:
     diversify: float = 8.0           # штраф за совпадение целевых типов разных покупателей
     reserve_price: float = 10.0      # ниже этой цены не продаём (занимает слот покупателя)
     wait_ticks: int = 3              # ждать лучшего покупателя, если он освободится за столько тактов
-    slot_planning_min_horizon: int = 1000
+    slot_planning_min_horizon: int = 0
+    slot_planning_known_buyers: int = 2
     slot_wait_cost: float = 4.0      # снижение ценности при ожидании сверх времени производства
     slot_uncertainty_bonus: float = 0.2
-    slot_stock_target: float = 2.4
-    slot_stock_sensitivity: float = 0.11
+    slot_stock_target: float = 3.4
+    slot_stock_sensitivity: float = 0.09
     hold_est: float = 6.0            # оценка числа тактов хранения робота при отложенной продаже
     pipeline_sheets: float = 3.0     # желаемый запас «листы + корпуса»
     pipeline_controls: float = 2.0   # желаемый запас элементов управления
-    cooldown_inclusive: bool = True  # покупатель занят и в такт t == cooldownUntil (консервативно)
+    cooldown_inclusive: bool = False  # для прогноза покупатель освобождается в такт cooldownUntil
     cap_by_kind: dict[str, int] = field(default_factory=lambda: {"sheet": 4, "control": 4, "body": 5, "robot": 6})
     epsilon: float = 0.0             # ε-жадность для обучения (в бою = 0)
     time_safety: float = 0.5         # доля eventTimeoutMs, которую разрешаем тратить на решение
 
 
-# Веса CMA-ES standard, принятые по финальной проверке на seed 1136–1235.
+# Веса CMA-ES standard: результат последнего обучения на 600 тактов.
 DEFAULT_Q: dict[str, float] = {
     # accept
-    "acc_bias": 6.460646087746754,
-    "acc_price": -0.744818097905831,
-    "acc_need": 3.9080489813355537,
-    "acc_crowd": -11.097763003529252,
-    "acc_margin": 5.534227410033151,
+    "acc_bias": 2.3828059823892334,
+    "acc_price": -0.6814501998075323,
+    "acc_need": 8.910350258343227,
+    "acc_crowd": -2.7115768167840915,
+    "acc_margin": 5.0999691998042564,
     # start
-    "st_bias": 3.257839880428274,
-    "st_stage_cut": 1.3944633532086121,
-    "st_stage_handles": -0.8188727308603809,
-    "st_stage_paint": 0.08728537237925571,
-    "st_stage_assemble": 3.6846899708706107,
-    "st_stage_value": -0.1383131860917498,
-    "st_progress": 1.1311520492760716,
-    "st_deficit": 3.910089925924348,
-    "st_stock": -2.2165974005162448,
-    "st_free_gain": 1.4165965677071024,
-    "st_cost": -0.7695392356595826,
+    "st_bias": 1.473534865152727,
+    "st_stage_cut": -0.12914313361688828,
+    "st_stage_handles": -0.7119876246018448,
+    "st_stage_paint": 1.890224708874836,
+    "st_stage_assemble": 1.6840289659495369,
+    "st_stage_value": 0.30935158226996046,
+    "st_progress": 0.8434680943975374,
+    "st_deficit": 1.8822985259279463,
+    "st_stock": -1.1962570403121864,
+    "st_free_gain": 2.0503319371317867,
+    "st_cost": -0.5248256726316158,
     # offer
-    "of_bias": -0.15508815045414567,
-    "of_exp_price": 0.41239676472590786,
-    "of_info": 7.015393826392922,
-    "of_fee": -1.7180367697817365,
-    "of_store": 0.8116550547251186,
-    "of_wait_gap": -1.858778684042095,
-    "of_below_reserve": -27.343548378214237,
+    "of_bias": 0.26694415831703605,
+    "of_exp_price": 0.17631187076892207,
+    "of_info": 4.80709875442807,
+    "of_fee": -1.0160502308846329,
+    "of_store": 1.1946885869080646,
+    "of_wait_gap": -1.8984014179793045,
+    "of_below_reserve": -18.732599720783902,
     # discard
-    "dc_bias": -14.544140887176384,
-    "dc_pressure": 20.347280441067404,
-    "dc_value": -1.1115620945671594,
-    "dc_overstock": 0.15391434375990043,
+    "dc_bias": -10.105974420703602,
+    "dc_pressure": 32.50088676107626,
+    "dc_value": -0.8521349942379366,
+    "dc_overstock": 3.2763634199575904,
 }
 STAGE_WEIGHT = {"cut": 0.3, "handles": 0.3, "paint": 0.6, "assemble": 1.0}
 
@@ -154,6 +156,7 @@ class WorkingState:
     cooldown_left: dict[str, int]
     supply: Optional[Item] = None
     supply_price: float = 0.0
+    busy_left: dict[str, int] = field(default_factory=dict)
 
     @property
     def ready_buyers(self) -> set[str]:
@@ -179,7 +182,10 @@ class Ctx:
         self.chain.control_price = last_price.get("control", chain.control_price)
         self.colors = list(cfg.attributes["color"])
         self.desired: Counter = Counter()
-        self.plan_buyer_slots = cfg.horizon >= params.slot_planning_min_horizon
+        self.plan_buyer_slots = cfg.horizon >= params.slot_planning_min_horizon or (
+            sum(belief.ideal_type() is not None for belief in market.beliefs.values())
+            >= params.slot_planning_known_buyers
+        )
         if self.plan_buyer_slots:
             self.V = self._plan_buyer_slots()
         else:
@@ -189,30 +195,15 @@ class Ctx:
                 self.desired[robot] += params.stock_per_buyer
 
     def _plan_buyer_slots(self) -> dict[RobotType, float]:
-        """Разложить готовые и уже окрашенные заготовки по окнам покупателей."""
+        """Оценить следующую сборку по свободным окнам после текущих запасов."""
         params = self.params
-        buyers = list(self.market.beliefs)
-        prices = {
-            robot: {buyer: self.market.expected_price(buyer, robot) for buyer in buyers}
-            for robot in self.market.types
-        }
-        available = self.ws.cooldown_left.copy()
+        timeline = BuyerTimeline(self)
+        available = timeline.reserve_slots()
         stock = self.have()
-
-        def scarcity(robot: RobotType) -> float:
-            ranked = sorted(prices[robot].values(), reverse=True)
-            return ranked[0] - (ranked[1] if len(ranked) > 1 else 0.0)
-
-        # Сначала размещаем типы, для которых заменить покупателя дороже.
-        for robot in sorted(stock, key=scarcity, reverse=True):
-            for _ in range(stock[robot]):
-                buyer = max(buyers, key=lambda b: prices[robot][b] - params.slot_wait_cost
-                            * max(0, available[b] - self.chain.assemble_ticks))
-                available[buyer] += self.cfg.buyerCooldown
 
         production_ticks = self.chain.paint_ticks + self.chain.assemble_ticks
         values = {}
-        for robot, by_buyer in prices.items():
+        for robot, by_buyer in timeline.prices.items():
             options = []
             for buyer, price in by_buyer.items():
                 low, high = self.market.interval(buyer, robot)

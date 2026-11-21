@@ -58,7 +58,13 @@ class LearningTests(unittest.TestCase):
         no_stock = value()
         self.sim.items['robot'] = dict(id='robot', kind='robot',
                                       props=dict(color='red', handles=False))
-        self.assertLess(value(), no_stock)
+        ready_stock = value()
+        self.assertLess(ready_stock, no_stock)
+
+        self.sim.items.clear()
+        self.sim.jobs['m-assemble'] = {'until': 3}
+        self.bot.wip['m-assemble'] = ('robot', {'color': 'red', 'handles': False})
+        self.assertLess(value(), ready_stock)
 
     def test_no_restart_until_explicit_machine_release(self):
         self.sim.items['body'] = dict(id='body',kind='body',props=dict(color=None,handles=False))
