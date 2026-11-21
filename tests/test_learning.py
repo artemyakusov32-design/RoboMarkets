@@ -6,6 +6,7 @@ from factory.demo import DemoRunner
 from factory.runs import ApiError
 from factory.planning.controller import LearningController, Pending
 from factory.planning.market import MarketModel
+from factory.planning.policy import Ctx
 from factory.planning.schemas import StartMsg, EventMsg
 from factory.runs import RunStore
 from factory.simulator import Simulator
@@ -27,6 +28,37 @@ class LearningTests(unittest.TestCase):
         self.assertEqual(market.beliefs['b1'].ideal_type(), ('red', False))
         self.assertEqual(market.interval('b1', ('blue', True)), (0, 0))
         self.assertGreater(market.expected_price('b1', ('blue', False)), 0)
+
+    def test_known_buyer_gets_reserve_price_even_after_high_sale(self):
+        robot_type = ('red', False)
+        for buyer in self.cfg.buyers:
+            preferred = robot_type if buyer == 'b1' else ('blue', True)
+            self.bot.market.on_sale_result(buyer, preferred, 'sold', 70, None, 10)
+        self.sim.items['robot'] = dict(id='robot', kind='robot',
+                                      props=dict(color='red', handles=False))
+
+        offers = [cmd for cmd in self.bot.handle_event(self.msg()) if cmd['cmd'] == 'offer']
+
+        self.assertEqual([(cmd['buyerId'], cmd['minPrice']) for cmd in offers], [('b1', 10)])
+
+    def test_slot_plan_counts_existing_robot_against_its_best_buyer(self):
+        self.cfg = StartMsg.from_wire(demo_config(horizon=1000))
+        self.bot = LearningController(self.cfg)
+        robot_type = ('red', False)
+        for buyer in self.cfg.buyers:
+            preferred = robot_type if buyer == 'b1' else ('blue', True)
+            self.bot.market.on_sale_result(buyer, preferred, 'sold', 70, None, 10)
+
+        def value():
+            state = self.bot._working_state(self.msg())
+            context = Ctx(self.cfg, state, self.bot.market, self.bot.chain,
+                          self.bot.params, self.bot.wip, self.bot.last_price)
+            return context.V[robot_type]
+
+        no_stock = value()
+        self.sim.items['robot'] = dict(id='robot', kind='robot',
+                                      props=dict(color='red', handles=False))
+        self.assertLess(value(), no_stock)
 
     def test_no_restart_until_explicit_machine_release(self):
         self.sim.items['body'] = dict(id='body',kind='body',props=dict(color=None,handles=False))
