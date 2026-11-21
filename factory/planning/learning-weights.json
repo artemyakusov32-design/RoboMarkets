@@ -1,0 +1,116 @@
+{
+  "training": {
+    "accepted": true,
+    "bestValidation": {
+      "invalidCommands": 0,
+      "meanProfit": 8747.92,
+      "minProfit": 6401.26,
+      "timeouts": 0
+    },
+    "candidateTest": {
+      "invalidCommands": 0,
+      "meanProfit": 8695.97,
+      "minProfit": 5661.93,
+      "timeouts": 0
+    },
+    "completedRuns": 12560,
+    "elapsedSeconds": 2801.43,
+    "generations": 20,
+    "horizon": 600,
+    "initialCoefficients": {
+      "acc_bias": 4.11536309427773,
+      "acc_crowd": -6.421942627312045,
+      "acc_margin": 7.6945866495432655,
+      "acc_need": 6.113971487246554,
+      "acc_price": -0.8600587332513202,
+      "dc_bias": -8.379122236974126,
+      "dc_overstock": 2.8058972275385967,
+      "dc_pressure": 20.461868407027758,
+      "dc_value": -0.28223651139771816,
+      "of_below_reserve": -13.368300988363094,
+      "of_bias": 0.05616478300653819,
+      "of_exp_price": 0.6969517356720669,
+      "of_fee": -0.8126789348730112,
+      "of_info": 4.927280859498848,
+      "of_store": 0.8680905944873876,
+      "of_wait_gap": -1.0757714592869756,
+      "st_bias": 2.5366551628234593,
+      "st_cost": -0.3201505058508326,
+      "st_deficit": 2.062603374668741,
+      "st_free_gain": 1.1231578426213582,
+      "st_progress": 0.9019362936195512,
+      "st_stage_assemble": 3.223417071115634,
+      "st_stage_cut": 0.06390538066520474,
+      "st_stage_handles": -0.8855136340344226,
+      "st_stage_paint": 1.5649782110485715,
+      "st_stage_value": 0.7187050522598019,
+      "st_stock": -1.6375356131104732
+    },
+    "initialTest": {
+      "invalidCommands": 0,
+      "meanProfit": 8572.86,
+      "minProfit": 5657.18,
+      "timeouts": 0
+    },
+    "initialValidation": {
+      "invalidCommands": 0,
+      "meanProfit": 8577.36,
+      "minProfit": 6343.1,
+      "timeouts": 0
+    },
+    "initialWeights": "learning-weights.json",
+    "maxPlannedRuns": 12560,
+    "method": "CMA-ES",
+    "population": 24,
+    "profile": "standard",
+    "searchSeed": 1,
+    "trainBatches": 4,
+    "trainWorldsPerCandidate": 24,
+    "trainingRuns": 11520,
+    "workers": 8,
+    "worlds": {
+      "test": {
+        "count": 100,
+        "firstSeed": 1136
+      },
+      "train": {
+        "count": 96,
+        "firstSeed": 1000
+      },
+      "validation": {
+        "count": 40,
+        "firstSeed": 1096
+      }
+    }
+  },
+  "version": 1,
+  "weights": {
+    "acc_bias": 2.3828059823892334,
+    "acc_crowd": -2.7115768167840915,
+    "acc_margin": 5.0999691998042564,
+    "acc_need": 8.910350258343227,
+    "acc_price": -0.6814501998075323,
+    "dc_bias": -10.105974420703602,
+    "dc_overstock": 3.2763634199575904,
+    "dc_pressure": 32.50088676107626,
+    "dc_value": -0.8521349942379366,
+    "of_below_reserve": -18.732599720783902,
+    "of_bias": 0.26694415831703605,
+    "of_exp_price": 0.17631187076892207,
+    "of_fee": -1.0160502308846329,
+    "of_info": 4.80709875442807,
+    "of_store": 1.1946885869080646,
+    "of_wait_gap": -1.8984014179793045,
+    "st_bias": 1.473534865152727,
+    "st_cost": -0.5248256726316158,
+    "st_deficit": 1.8822985259279463,
+    "st_free_gain": 2.0503319371317867,
+    "st_progress": 0.8434680943975374,
+    "st_stage_assemble": 1.6840289659495369,
+    "st_stage_cut": -0.12914313361688828,
+    "st_stage_handles": -0.7119876246018448,
+    "st_stage_paint": 1.890224708874836,
+    "st_stage_value": 0.30935158226996046,
+    "st_stock": -1.1962570403121864
+  }
+}
