@@ -176,14 +176,9 @@ class MarketModel:
             used[t] += 1
         return res
 
-    def suggest_min_price(self, b: str, t: RobotType, *, alpha_explore: float, alpha_exploit: float,
-                          tol_rel: float, reserve: float) -> Optional[float]:
-        """Бинарный поиск: minPrice внутри вилки [lo, hi]. Вилка узкая -> почти продаём (alpha_exploit),
-        широкая -> делим по alpha_explore (0.5 = деление пополам). None — покупатель не заплатит >= reserve."""
-        lo, hi = self.interval(b, t)
-        if hi < reserve:
+    def suggest_min_price(self, b: str, t: RobotType, *, reserve: float) -> Optional[float]:
+        """Порог допуска к сделке. Итоговую цену определяет покупатель."""
+        _, high = self.interval(b, t)
+        if min(self.ceiling, high * (1 + self.priors.noise)) < reserve:
             return None
-        rel = (hi - lo) / max(hi, EPS)
-        alpha = alpha_exploit if rel <= tol_rel else alpha_explore
-        m = max(lo + alpha * (hi - lo), reserve)
-        return round(min(m, self.ceiling), 2)
+        return reserve

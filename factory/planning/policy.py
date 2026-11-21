@@ -30,11 +30,13 @@ class Params:
     stock_per_buyer: float = 1.5     # целевой запас робота «под покупателя»
     ucb_kappa: float = 0.25          # бонус неопределённости при выборе целевого типа
     diversify: float = 8.0           # штраф за совпадение целевых типов разных покупателей
-    alpha_explore: float = 0.35      # minPrice внутри вилки при широкой вилке (0.5 = ровно пополам)
-    alpha_exploit: float = 0.05      # то же при узкой вилке (почти гарантированная продажа)
-    tol_rel: float = 0.08            # «узкая вилка» = ширина/верхняя граница
     reserve_price: float = 10.0      # ниже этой цены не продаём (занимает слот покупателя)
     wait_ticks: int = 3              # ждать лучшего покупателя, если он освободится за столько тактов
+    slot_planning_min_horizon: int = 1000
+    slot_wait_cost: float = 4.0      # снижение ценности при ожидании сверх времени производства
+    slot_uncertainty_bonus: float = 0.2
+    slot_stock_target: float = 2.4
+    slot_stock_sensitivity: float = 0.11
     hold_est: float = 6.0            # оценка числа тактов хранения робота при отложенной продаже
     pipeline_sheets: float = 3.0     # желаемый запас «листы + корпуса»
     pipeline_controls: float = 2.0   # желаемый запас элементов управления
@@ -176,11 +178,54 @@ class Ctx:
         self.chain.sheet_price = last_price.get("sheet", chain.sheet_price)
         self.chain.control_price = last_price.get("control", chain.control_price)
         self.colors = list(cfg.attributes["color"])
-        self.V = market.type_values()
-        self.assign = market.assign_types(params.ucb_kappa, params.diversify)
         self.desired: Counter = Counter()
-        for t in self.assign.values():
-            self.desired[t] += params.stock_per_buyer
+        self.plan_buyer_slots = cfg.horizon >= params.slot_planning_min_horizon
+        if self.plan_buyer_slots:
+            self.V = self._plan_buyer_slots()
+        else:
+            self.V = market.type_values()
+            assigned_types = market.assign_types(params.ucb_kappa, params.diversify)
+            for robot in assigned_types.values():
+                self.desired[robot] += params.stock_per_buyer
+
+    def _plan_buyer_slots(self) -> dict[RobotType, float]:
+        """Разложить готовые и уже окрашенные заготовки по окнам покупателей."""
+        params = self.params
+        buyers = list(self.market.beliefs)
+        prices = {
+            robot: {buyer: self.market.expected_price(buyer, robot) for buyer in buyers}
+            for robot in self.market.types
+        }
+        available = self.ws.cooldown_left.copy()
+        stock = self.have()
+
+        def scarcity(robot: RobotType) -> float:
+            ranked = sorted(prices[robot].values(), reverse=True)
+            return ranked[0] - (ranked[1] if len(ranked) > 1 else 0.0)
+
+        # Сначала размещаем типы, для которых заменить покупателя дороже.
+        for robot in sorted(stock, key=scarcity, reverse=True):
+            for _ in range(stock[robot]):
+                buyer = max(buyers, key=lambda b: prices[robot][b] - params.slot_wait_cost
+                            * max(0, available[b] - self.chain.assemble_ticks))
+                available[buyer] += self.cfg.buyerCooldown
+
+        production_ticks = self.chain.paint_ticks + self.chain.assemble_ticks
+        values = {}
+        for robot, by_buyer in prices.items():
+            options = []
+            for buyer, price in by_buyer.items():
+                low, high = self.market.interval(buyer, robot)
+                wait = max(0, available[buyer] - production_ticks)
+                options.append(price + params.slot_uncertainty_bonus * (high - low)
+                               - params.slot_wait_cost * wait)
+            values[robot] = max(options)
+
+        best = max(values.values())
+        for robot, value in values.items():
+            stock_adjustment = params.slot_stock_target + (value - best) * params.slot_stock_sensitivity
+            self.desired[robot] = stock[robot] + max(-3.0, stock_adjustment)
+        return values
 
     # ценность предмета = ожидаемая прибыль от его доведения до продажи (за вычетом оставшихся затрат)
     def potential(self, kind: str, props: dict) -> float:
@@ -325,17 +370,22 @@ class CandidateGenerator:
             seen.add(t)
             E = {b: market.expected_price(b, t) for b in market.beliefs}
             for b in sorted(ws.ready_buyers):
-                m = market.suggest_min_price(b, t, alpha_explore=p.alpha_explore, alpha_exploit=p.alpha_exploit,
-                                             tol_rel=p.tol_rel, reserve=p.reserve_price)
+                m = market.suggest_min_price(b, t, reserve=p.reserve_price)
                 if m is None:
                     continue
                 lo, hi = market.interval(b, t)
-                soon = [E[b2] for b2 in market.beliefs if b2 != b and ws.cooldown_left[b2] <= p.wait_ticks]
+                if ctx.plan_buyer_slots:
+                    alternatives = [price - p.slot_wait_cost * ws.cooldown_left[buyer]
+                                    for buyer, price in E.items() if buyer != b
+                                    and ws.cooldown_left[buyer] <= cfg.horizon - ws.t]
+                else:
+                    alternatives = [price for buyer, price in E.items()
+                                    if buyer != b and ws.cooldown_left[buyer] <= p.wait_ticks]
                 f = {"of_bias": 1.0, "of_exp_price": E[b],
                      "of_info": (hi - lo) / cfg.priceCeiling * (1.0 - ws.t / max(cfg.horizon, 1)),
                      "of_fee": cfg.offerFee,
                      "of_store": cfg.storageFee.get("robot", 0.5) * p.hold_est,
-                     "of_wait_gap": max(0.0, max(soon, default=0.0) - E[b]),
+                     "of_wait_gap": max(0.0, max(alternatives, default=0.0) - E[b]),
                      "of_below_reserve": max(0.0, p.reserve_price - E[b]) / p.reserve_price}
                 out.append(Candidate(Command(cmd="offer", buyerId=b, itemId=it.id, minPrice=m), f,
                                      meta={"rtype": t, "min_price": m}))
